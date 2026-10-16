@@ -1,0 +1,16 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "type": "module",
+  "description": "zeroicey's Pi extensions - one publishable package per directory under packages/.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bun run --filter '*' typecheck"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
