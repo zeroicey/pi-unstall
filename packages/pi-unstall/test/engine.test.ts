@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { defaultConfig } from "../src/config.ts";
 import { defaultDetectors } from "../src/detect.ts";
-import type { Judge } from "../src/types.ts";
+import type { Judge, JudgeOutcome } from "../src/types.ts";
 import {
 	assistantEntry,
 	makeAgentDir,
@@ -19,9 +18,9 @@ function stubJudge(verdict: "ok" | "stalled" | "unparsable" | "failed", reason =
 	const judge = {
 		name: "stub-judge",
 		calls: 0,
-		async adjudicate() {
+		async adjudicate(): Promise<JudgeOutcome> {
 			judge.calls += 1;
-			return { verdict, reason } as any;
+			return { verdict, reason } as JudgeOutcome;
 		},
 	};
 	return judge;
@@ -29,18 +28,21 @@ function stubJudge(verdict: "ok" | "stalled" | "unparsable" | "failed", reason =
 
 /** A judge that never resolves until released, for concurrency assertions. */
 function deferredJudge() {
-	let release!: (value: any) => void;
+	let release!: (value: JudgeOutcome) => void;
 	const judge = {
 		name: "deferred-judge",
 		calls: 0,
-		async adjudicate() {
+		async adjudicate(): Promise<JudgeOutcome> {
 			judge.calls += 1;
-			return new Promise((resolve) => {
+			return new Promise<JudgeOutcome>((resolve) => {
 				release = resolve;
 			});
 		},
 	};
-	return { judge, release: (verdict: "ok" | "stalled") => release({ verdict, reason: "released" }) };
+	return {
+		judge,
+		release: (verdict: "ok" | "stalled") => release({ verdict, reason: "released" }),
+	};
 }
 
 describe("engine: deterministic stalls", () => {
@@ -175,8 +177,8 @@ describe("engine: streak bookkeeping", () => {
 		let verdict: "ok" | "stalled" = "stalled";
 		const judge: Judge = {
 			name: "flip",
-			async adjudicate() {
-				return { verdict, reason: "flip" } as any;
+			async adjudicate(): Promise<JudgeOutcome> {
+				return { verdict, reason: "flip" } as JudgeOutcome;
 			},
 		};
 		const harness = makeHarness({ agentDir, engine: { judge } });
@@ -273,7 +275,7 @@ describe("engine: guards", () => {
 		let branch: any[] = [text("prose")];
 		const judge: Judge = {
 			name: "mover",
-			async adjudicate() {
+			async adjudicate(): Promise<JudgeOutcome> {
 				// The human takes over mid-judge: a newer assistant turn appears.
 				branch = [text("prose"), userEntry("u2", "stop"), text("ok", {})];
 				branch[2]!.id = "a2";

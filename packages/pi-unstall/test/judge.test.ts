@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultConfig } from "../src/config.ts";
 import { createModelJudge, buildJudgeRequest, parseVerdict } from "../src/judge.ts";
-import type { StallEvidence } from "../src/types.ts";
+import type { StallEvidence, Verdict } from "../src/types.ts";
 
 const config = defaultConfig();
 
@@ -14,7 +14,7 @@ const evidence: StallEvidence = {
 };
 
 describe("parseVerdict", () => {
-	const cases: Array<[string, string]> = [
+	const cases: Array<[string, Verdict]> = [
 		[`{"verdict":"ok","reason":"finished"}`, "ok"],
 		[`{"verdict":"stalled","reason":"cut off"}`, "stalled"],
 		["```json\n{\"verdict\":\"ok\"}\n```", "ok"],

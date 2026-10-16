@@ -1,20 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { defaultDetectors, emptyTextDetector, stopReasonGuard } from "../src/detect.ts";
 import { defaultConfig } from "../src/config.ts";
-import type { ResolvedContext, StallEvidence } from "../src/types.ts";
-import { assistantEntry } from "./harness.ts";
+import { defaultDetectors, emptyTextDetector, stopReasonGuard } from "../src/detect.ts";
+import type { ResolvedContext, StallEvidence, UnstallMessage } from "../src/types.ts";
 
 const config = defaultConfig();
-const context: ResolvedContext = { config };
 
-function evidence(entries: Parameters<typeof assistantEntry>[0] extends never ? never : any): StallEvidence {
-	return {
-		message: entries,
-		text: "",
-		branch: [],
-		aborted: false,
-		tail: "",
-	};
+function evidence(message: UnstallMessage): StallEvidence {
+	return { message, text: "", branch: [], aborted: false, tail: "" };
 }
 
 describe("stopReasonGuard", () => {

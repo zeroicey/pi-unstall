@@ -34,9 +34,14 @@ import type {
 /** The extension surface this engine actually uses. */
 export type UnstallPi = Pick<ExtensionAPI, "on" | "sendUserMessage" | "registerCommand">;
 
-/** The session-manager surface this engine actually uses. */
-export interface UnstallSession {
-	getBranch(): unknown;
+/**
+ * Read the active branch as this package's structural subset of session entries.
+ */
+function branchOf(ctx: ExtensionContext): BranchEntry[] {
+	// SAFETY: Pi types `getBranch()` with its own `SessionEntry[]`. `BranchEntry` is a
+	// structural subset of those entries and only its fields are read, so no runtime
+	// conversion happens - the cast keeps this package free of a build-time host type.
+	return ctx.sessionManager.getBranch() as unknown as BranchEntry[];
 }
 
 export interface CreateUnstallOptions {
@@ -63,6 +68,15 @@ export interface CreateUnstallOptions {
 const TAG = "[pi-unstall]";
 
 /**
+ * Default diagnostics sink. Writes to stderr (Pi captures extension stderr into
+ * its own log) rather than `console`, so this stays usable from library code
+ * that may be embedded anywhere.
+ */
+export function stderrLog(message: string): void {
+	process.stderr.write(`${TAG} ${message}\n`);
+}
+
+/**
  * Build the extension. Returns a Pi extension factory.
  *
  * @example Custom detectors and an extra recovery
@@ -78,7 +92,7 @@ const TAG = "[pi-unstall]";
  * ```
  */
 export function createUnstall(options: CreateUnstallOptions) {
-	const log = options.log ?? ((message: string) => console.error(`${TAG} ${message}`));
+	const log = options.log ?? stderrLog;
 	const now = options.now ?? (() => Date.now());
 	const detectors = options.detectors ?? defaultDetectors();
 	const recoveries = options.recoveries ?? defaultRecoveries();
@@ -142,11 +156,9 @@ export function createUnstall(options: CreateUnstallOptions) {
 					ctx.ui.setStatus("pi-unstall", undefined);
 					return;
 				}
-				const suffix = state.suppressed
-					? " ⏸"
-					: state.streak > 0
-						? ` ${state.streak}/${config.maxConsecutive}`
-						: "";
+				let suffix = "";
+				if (state.suppressed) suffix = " ⏸";
+				else if (state.streak > 0) suffix = ` ${state.streak}/${config.maxConsecutive}`;
 				ctx.ui.setStatus("pi-unstall", `♻${suffix}`);
 			} catch {
 				// The footer is never a critical path.
@@ -335,7 +347,7 @@ export function createUnstall(options: CreateUnstallOptions) {
 				if (config.debug) log("host is busy again; standing down");
 				return;
 			}
-			const fresh = findLastAssistant(ctx.sessionManager.getBranch() as unknown as BranchEntry[]);
+			const fresh = findLastAssistant(branchOf(ctx));
 			if (!fresh || fresh.entry.id !== evidence.entryId) {
 				if (config.debug) log("conversation moved on while judging; standing down");
 				return;
@@ -366,7 +378,7 @@ export function createUnstall(options: CreateUnstallOptions) {
 			}
 			if (ctx.hasPendingMessages()) return;
 
-			const branch = ctx.sessionManager.getBranch() as unknown as BranchEntry[];
+			const branch = branchOf(ctx);
 			if (hasUserAfterLastAssistant(branch)) {
 				if (config.debug) log("a user message follows the assistant turn; standing down");
 				return;
@@ -427,6 +439,11 @@ export function createUnstall(options: CreateUnstallOptions) {
 			const model = config.judge.model
 				? `${config.judge.model.provider}/${config.judge.model.model}`
 				: "(session model)";
+			let lastVerdict = "last verdict=-";
+			if (state.lastAt > 0) {
+				const reason = state.lastReason ? ` (${state.lastReason})` : "";
+				lastVerdict = `last verdict=${state.lastVerdict}${reason}`;
+			}
 			return [
 				`enabled=${isEnabled(config) ? "yes" : "no"}${
 					state.enabledOverride === undefined ? "" : " (overridden this session)"
@@ -438,9 +455,7 @@ export function createUnstall(options: CreateUnstallOptions) {
 				`prompt=${loadPrompt(config).source}`,
 				`suppressed=${state.suppressed ? "yes (after Escape)" : "no"}`,
 				`config=${state.configPath}${state.configError ? ` (ERROR: ${state.configError})` : ""}`,
-				state.lastAt > 0
-					? `last verdict=${state.lastVerdict}${state.lastReason ? ` (${state.lastReason})` : ""}`
-					: "last verdict=-",
+				lastVerdict,
 			];
 		}
 
@@ -469,12 +484,16 @@ export function createUnstall(options: CreateUnstallOptions) {
 					return;
 				}
 				if (command === "judge") {
-					const branch = ctx.sessionManager.getBranch() as unknown as BranchEntry[];
+					const branch = branchOf(ctx);
 					if (!findLastAssistant(branch)) {
 						ctx.ui.notify(`${TAG} no assistant message in this branch`, "warning");
 						return;
 					}
-					const evidence = collectEvidence(branch, false, config)!;
+					const evidence = collectEvidence(branch, false, config);
+					if (!evidence) {
+						ctx.ui.notify(`${TAG} could not build the conversation tail`, "warning");
+						return;
+					}
 					const outcome = await judge.adjudicate(
 						evidence,
 						{ config, session: ctx },

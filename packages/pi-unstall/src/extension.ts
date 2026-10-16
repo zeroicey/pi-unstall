@@ -21,6 +21,14 @@ function sessionOf(session: unknown): ExtensionContext | undefined {
 	return session as ExtensionContext | undefined;
 }
 
+/**
+ * Report a recoverable configuration problem on stderr, without failing the run.
+ * Pi captures extension stderr into its log, which is where this belongs.
+ */
+const reportFallback = (message: string): void => {
+	process.stderr.write(`[pi-unstall] ${message}\n`);
+};
+
 const resolveModel: ResolveJudgeModel = (config, session) => {
 	const ctx = sessionOf(session);
 	if (!ctx) return undefined;
@@ -30,8 +38,8 @@ const resolveModel: ResolveJudgeModel = (config, session) => {
 			config.judge.model.model,
 		);
 		if (found) return found;
-		console.error(
-			`[pi-unstall] judge model ${config.judge.model.provider}/${config.judge.model.model} not found; falling back to the session model`,
+		reportFallback(
+			`judge model ${config.judge.model.provider}/${config.judge.model.model} not found; falling back to the session model`,
 		);
 	}
 	return ctx.model;
@@ -40,8 +48,9 @@ const resolveModel: ResolveJudgeModel = (config, session) => {
 const complete: JudgeComplete = (model, request, options) => {
 	const ctx = sessionOf(options.session);
 	if (!ctx) throw new Error("pi-unstall: judge called without a session context");
-	// The engine's request shape is deliberately provider-neutral; the host owns
-	// the concrete `Context` type it needs.
+	// SAFETY: the engine's request shape is a provider-neutral subset of Pi's `Context`
+	// (a system prompt plus user messages), so this widening cast loses nothing: Pi
+	// receives exactly these fields.
 	const context = {
 		systemPrompt: request.systemPrompt,
 		messages: request.messages,

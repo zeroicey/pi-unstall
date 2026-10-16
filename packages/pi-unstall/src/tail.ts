@@ -84,8 +84,8 @@ export function findLastAssistant(
 	branch: BranchEntry[],
 ): { entry: BranchEntry; message: UnstallMessage } | undefined {
 	for (let i = branch.length - 1; i >= 0; i--) {
-		const entry = branch[i]!;
-		if (entry.type === "message" && entry.message?.role === "assistant") {
+		const entry = branch[i];
+		if (entry?.type === "message" && entry.message?.role === "assistant") {
 			return { entry, message: entry.message };
 		}
 	}
@@ -95,8 +95,8 @@ export function findLastAssistant(
 /** Whether a user message appears after the last assistant message. */
 export function hasUserAfterLastAssistant(branch: BranchEntry[]): boolean {
 	for (let i = branch.length - 1; i >= 0; i--) {
-		const entry = branch[i]!;
-		if (entry.type !== "message") continue;
+		const entry = branch[i];
+		if (entry === undefined || entry.type !== "message") continue;
 		const role = entry.message?.role;
 		if (role === "assistant") return false;
 		if (role === "user") return true;
@@ -114,22 +114,19 @@ export function buildTail(
 	branch: BranchEntry[],
 	config: UnstallConfig,
 ): { text: string; messageCount: number } {
-	const picked: string[] = [];
 	const maxMessages = config.judge.tailMessages;
-
+	const newestFirst: string[] = [];
 	for (let i = branch.length - 1; i >= 0; i--) {
-		if (picked.length >= maxMessages) break;
-		const entry = branch[i]!;
-		if (entry.type !== "message" || !entry.message?.role) continue;
+		if (newestFirst.length >= maxMessages) break;
+		const entry = branch[i];
+		if (entry === undefined || entry.type !== "message" || !entry.message?.role) continue;
 		const rendered = formatMessage(entry.message);
-		if (rendered) picked.push(rendered);
+		if (rendered) newestFirst.push(rendered);
 	}
-	picked.reverse();
 
 	const kept: string[] = [];
 	let used = 0;
-	for (let i = picked.length - 1; i >= 0; i--) {
-		const block = picked[i]!;
+	for (const block of newestFirst) {
 		if (used + block.length > config.judge.maxTailChars) {
 			const room = config.judge.maxTailChars - used;
 			if (room > 200) kept.push(`${block.slice(0, room)}…(earlier content omitted)`);
@@ -138,10 +135,16 @@ export function buildTail(
 		kept.push(block);
 		used += block.length + 2;
 	}
-	kept.reverse();
 
-	const text = `Tail of the conversation (${kept.length} messages, oldest first):\n\n${kept.join(
+	// `kept` is newest-first; read it backwards for an oldest-first tail.
+	const ordered: string[] = [];
+	for (let i = kept.length - 1; i >= 0; i--) {
+		const block = kept[i];
+		if (block !== undefined) ordered.push(block);
+	}
+
+	const text = `Tail of the conversation (${ordered.length} messages, oldest first):\n\n${ordered.join(
 		"\n\n",
 	)}`;
-	return { text, messageCount: kept.length };
+	return { text, messageCount: ordered.length };
 }

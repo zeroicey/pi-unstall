@@ -7,7 +7,7 @@
  */
 
 export { createUnstall } from "./unstall.ts";
-export type { CreateUnstallOptions, UnstallPi, UnstallSession } from "./unstall.ts";
+export type { CreateUnstallOptions, UnstallPi } from "./unstall.ts";
 
 export { defaultDetectors, emptyTextDetector, stopReasonDetector, stopReasonGuard } from "./detect.ts";
 export { continueMessageRecovery, defaultRecoveries } from "./recovery.ts";

@@ -184,8 +184,7 @@ export function createModelJudge(options: ModelJudgeOptions): Judge {
 				};
 			}
 			const raw = asArray(response.content)
-				.filter((block) => block?.type === "text")
-				.map((block) => String(block.text ?? ""))
+				.flatMap((block) => (block?.type === "text" ? [String(block.text ?? "")] : []))
 				.join("\n");
 			const verdict: DetectorResult = parseVerdict(raw);
 			if (verdict.verdict === "unknown") {
